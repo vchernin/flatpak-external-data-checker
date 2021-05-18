@@ -37,7 +37,7 @@ import re
 import tempfile
 
 from ..lib.externaldata import ExternalBase, ExternalData, Checker
-from ..lib import utils, NETWORK_ERRORS
+from ..lib import utils, NETWORK_ERRORS, HTTP_CLIENT_HEADERS
 from ..lib.errors import CheckerFetchError
 
 log = logging.getLogger(__name__)
@@ -92,6 +92,8 @@ class URLChecker(Checker):
         else:
             url = external_data.current_version.url
 
+        strip_query = external_data.checker_data.get("strip-query", False)
+
         if url.startswith("data:"):
             log.debug("Skipping data URL")
             return
@@ -99,6 +101,12 @@ class URLChecker(Checker):
         version_string = None
 
         try:
+            if strip_query:
+                async with self.session.head(
+                    url, allow_redirects=True, headers=HTTP_CLIENT_HEADERS
+                ) as head:
+                    url = str(head.url.with_query(""))
+
             if url.endswith(".AppImage"):
                 with tempfile.NamedTemporaryFile("w+b") as tmpfile:
                     new_version = await utils.get_extra_data_info_from_url(
