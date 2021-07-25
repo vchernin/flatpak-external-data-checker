@@ -30,6 +30,7 @@ from xml.dom import minidom
 
 from src.lib.utils import init_logging
 from src.lib.externaldata import ExternalData, Checker
+from src.lib.checksums import MultiDigest
 from src.checker import ManifestChecker
 
 TEST_MANIFEST = os.path.join(
@@ -74,7 +75,7 @@ class UpdateEverythingChecker(DummyChecker):
         external_data.state = ExternalData.State.BROKEN
         external_data.new_version = external_data.current_version._replace(
             size=self.SIZE,
-            checksum=self.CHECKSUM,
+            checksum=MultiDigest(sha256=self.CHECKSUM),
             version=self.VERSION,
             timestamp=self.TIMESTAMP,
         )
@@ -412,6 +413,9 @@ size: {UpdateEverythingChecker.SIZE}
 
         for data in ext_data:
             if data.new_version:
+                self.assertIsInstance(data.new_version.url, str)
+                self.assertIsInstance(data.new_version.checksum, MultiDigest)
+                self.assertIsInstance(data.new_version.size, int)
                 ext_data_with_new_version += 1
 
         self.assertEqual(ext_data_with_new_version, NUM_NEW_VERSIONS)
@@ -446,8 +450,8 @@ size: {UpdateEverythingChecker.SIZE}
         self.assertIn(
             relative_redirect.new_version.checksum,
             [
-                hashlib.sha256(hogs_data).hexdigest(),
-                hashlib.sha256(hogs_compr).hexdigest(),
+                MultiDigest(sha256=hashlib.sha256(hogs_data).hexdigest()),
+                MultiDigest(sha256=hashlib.sha256(hogs_compr).hexdigest()),
             ],
         )
         self.assertIn(
