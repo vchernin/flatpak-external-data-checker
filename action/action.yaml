@@ -1,0 +1,56 @@
+name: "Testing Flatpak External Data Checker"
+author: "The Flatpak External Data Checker authors"
+description: "A tool for checking if the external data used in Flatpak manifests is still up to date" 
+inputs:
+  # todo these are untrusted inputs, so ensure we handle safely
+  # even though this action might only run in an individual repo, it still has some amount of access (at least by default)
+  # so at bare minimum this should do some sanity checks on the inputs somehow
+  config_file:
+    description: "Set the name for a JSON config file that can store configuration options passed to the action. Note the file name is always appended with .json"
+    required: false
+    default: "flathub.json"
+  github_org_wide:
+    description: "Enter an exact GitHub organization name to enable this action for GitHub organization wide mode. This is not needed if only updating a single repo."
+    required: false
+  path_to_manifest:
+    description: "Enter the exact path to the Flatpak manifest in your GitHub repo. Only needed for individual repositories."
+    required: false
+  name_input: 
+    description: "Name of user to do commits"
+    required: true
+    default: Flatpak External Data Checker
+  email_input:
+    description: "Email of user to do commits"
+    required: true
+    default: ${{ github.actor }}
+  github_token_input:
+    description: "Token needed to edit repo"
+    required: true
+    default: ${{ github.token }}
+  github_workspace_input:
+    description: "Current repo we are in"
+    required: true
+    default: ${{ github.workspace }}
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  # todo this works, but ideally don't build a docker image every time...
+  # can we not push this image somewhere. Or include parallel in upstream image and mount the script instead?
+  
+  # todo docs seem to specify this, but maybe env can be used instead
+  args:
+    - ${{ inputs.config_file }}
+    - ${{ inputs.github_org_wide }}
+    - ${{ inputs.path_to_manifest }}
+  env: 
+    # todo do we need both author and commiter names here? script isn't using them
+    GIT_AUTHOR_NAME: ${{ inputs.name_input }}
+    GIT_COMMITTER_NAME: ${{ inputs.name_input }}
+    GIT_AUTHOR_EMAIL: ${{ inputs.email_input }}@users.noreply.github.com
+    GIT_COMMITTER_EMAIL: ${{ inputs.email_input }}@users.noreply.github.com
+    EMAIL: ${{ inputs.email_input }}@users.noreply.github.com
+    GITHUB_TOKEN: ${{ inputs.github_token_input }}
+    
+    # todo, I believe there is a way of restricting an action's permissions, if possible that would make a lot of sense.
+    
