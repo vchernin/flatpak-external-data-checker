@@ -39,7 +39,6 @@ from .lib.utils import parse_github_url, init_logging
 from .lib.externaldata import ExternalData
 from . import manifest
 
-
 log = logging.getLogger(__name__)
 
 
@@ -59,7 +58,9 @@ def indir(path):
         os.chdir(old)
 
 
-def print_outdated_external_data(manifest_checker: manifest.ManifestChecker):
+def print_outdated_data(
+    manifest_checker: manifest.ManifestChecker,
+):
     ext_data = manifest_checker.get_outdated_external_data()
     for data in ext_data:
         state_txt = data.state.name or str(data.state)
@@ -113,7 +114,47 @@ def print_outdated_external_data(manifest_checker: manifest.ManifestChecker):
             **message_args,
         )
         print(message, flush=True)
-    return len(ext_data)
+
+    submodule_data = manifest_checker.submodule_checker.get_outdated_submodules()
+    for submodule in submodule_data:
+        for module in submodule.modules:
+            if submodule.get_module_updated_hash(module):
+
+                message_tmpl = (
+                    "OUTDATED: {module}\n"
+                    " Has a new version:\n"
+                    "  SHA256:    {sha256_new}\n"
+                    "  Submodule: {path}\n"
+                    "  Commit:    {commit}\n"
+                    "  Nested:    {nested}\n"
+                )
+
+                message = message_tmpl.format(
+                    module=module,
+                    commit=submodule.commit,
+                    path=submodule.relative_path,
+                    sha256_new=submodule.get_module_updated_hash(module),
+                    nested=submodule.nested,
+                )
+                print(message, flush=True)
+            else:
+                message_tmpl = (
+                    "NOT FOUND: {module}\n"
+                    " Couldn't find in latest submodule:\n"
+                    "  Submodule: {path}\n"
+                    "  Commit:    {commit}\n"
+                    "  Nested:    {nested}\n"
+                )
+
+                message = message_tmpl.format(
+                    module=module,
+                    path=submodule.relative_path,
+                    commit=submodule.commit,
+                    nested=submodule.nested,
+                )
+                print(message, flush=True)
+
+    return len(ext_data) + len(submodule_data)
 
 
 def print_errors(manifest_checker: manifest.ManifestChecker) -> int:
@@ -135,17 +176,19 @@ class CommittedChanges(t.NamedTuple):
     base_branch: t.Optional[str]
 
 
-def commit_changes(changes: t.List[str]) -> CommittedChanges:
+def commit_changes(
+    changes: t.List[str], nested_submodule_warnings: t.List[str]
+) -> CommittedChanges:
     log.info("Committing updates")
     body: t.Optional[str]
     if len(changes) > 1:
         subject = "Update {} modules".format(len(changes))
-        body = "\n".join(changes)
+        body = "\n".join(changes) + "\n\n" + "\n".join(nested_submodule_warnings)
         message = subject + "\n\n" + body
     else:
         subject = changes[0]
-        body = None
-        message = subject
+        body = "\n".join(nested_submodule_warnings)
+        message = subject + "\n\n" + body
 
     # Remember the base branch
     base_branch: t.Optional[str]
@@ -157,6 +200,8 @@ def commit_changes(changes: t.List[str]) -> CommittedChanges:
 
     # Moved to detached HEAD
     check_call(["git", "checkout", "HEAD@{0}"])
+
+    # git uses one submodule commit per superproject, so submodule changes are visible in every branch
     check_call(["git", "commit", "-am", message])
 
     # Find a stable identifier for the contents of the tree, to avoid
@@ -400,13 +445,21 @@ async def run_with_args(args: argparse.Namespace) -> t.Tuple[int, int, bool]:
 
     await manifest_checker.check(args.filter_type)
 
-    outdated_num = print_outdated_external_data(manifest_checker)
+    outdated_data = print_outdated_data(manifest_checker)
 
-    if should_update and outdated_num > 0:
-        changes = manifest_checker.update_manifests()
-        if changes and not args.edit_only:
+    if should_update and outdated_data > 0:
+        manifest_changes = manifest_checker.update_manifests()
+
+        (
+            submodule_changes,
+            nested_submodule_warnings,
+        ) = await manifest_checker.submodule_checker.update()
+        if (manifest_changes or submodule_changes) and not args.edit_only:
             with indir(os.path.dirname(args.manifest)):
-                committed_changes = commit_changes(changes)
+
+                committed_changes = commit_changes(
+                    manifest_changes + submodule_changes, nested_submodule_warnings
+                )
                 if not args.commit_only:
                     open_pr(
                         committed_changes,
@@ -423,7 +476,11 @@ async def run_with_args(args: argparse.Namespace) -> t.Tuple[int, int, bool]:
         errors_num,
     )
 
-    return outdated_num, errors_num, did_update
+    return (
+        outdated_data,
+        errors_num,
+        did_update,
+    )
 
 
 class ResultCode(IntFlag):
