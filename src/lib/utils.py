@@ -183,7 +183,12 @@ def filter_versions(
 def clear_env(environ):
     new_env = copy.deepcopy(environ)
     for varname in new_env.keys():
-        if any(i in varname.lower() for i in ["pass", "token", "secret", "auth"]):
+        # don't remove git variables containing "auth" as they are needed for commiting
+        GIT_VARS = ["git_author_name", "git_author_email"]
+        if any(
+            varname.lower() not in GIT_VARS and i in varname.lower()
+            for i in ["pass", "token", "secret", "auth"]
+        ):
             log.debug("Removing env %s", varname)
             new_env.pop(varname)
     return new_env
