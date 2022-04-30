@@ -454,6 +454,7 @@ async def run_with_args(args: argparse.Namespace) -> t.Tuple[int, int, bool]:
             submodule_changes,
             nested_submodule_warnings,
         ) = await manifest_checker.submodule_checker.update()
+        manifest_checker.runtime_checker.update()
         if (manifest_changes or submodule_changes) and not args.edit_only:
             with indir(os.path.dirname(args.manifest)):
 

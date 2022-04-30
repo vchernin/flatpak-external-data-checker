@@ -1,0 +1,90 @@
+"app-id" = "id". every app we runtime check will have this
+
+branch, default-branch
+
+runtime, runtime-version, base, base-version are the props we care about.
+
+sdk
+
+
+
+
+"branch": {
+    "description": "The branch to use when exporting the application. If this is unset the defaults come from the default-branch option.",
+    "type": "string"
+},
+"default-branch": {
+    "description": "The default branch to use when exporting the application. Defaults to master. This key can be overridden by the --default-branch commandline option.",
+    "type": "string"
+},
+branch does not necessarily correspond with freedesktop names even on flathub, see https: //github.com/flathub/org.gtk.Gtk3theme.deepin-dark/blob/master/org.gtk.Gtk3theme.deepin-dark.json
+
+"runtime": {
+    "description": "The name of the runtime that the application uses.",
+    "type": "string"
+},
+"runtime-version": {
+    "description": "The version of the runtime that the application uses, defaults to master.",
+    "type": "string"
+},
+
+
+"base": {
+    "description": "Start with the files from the specified application. This can be used to create applications that extend another application.",
+    "type": "string"
+},
+"base-version": {
+    "description": "Use this specific version of the application specified in base. If unspecified, this uses the value specified in branch",
+    "type": "string"
+},
+
+
+"build-extension": {
+    "description": "Build an extension.",
+    "type": "boolean"
+},
+# true for most e.g. gtk themees (but not super relevant for us)
+
+base-extensions
+# todo this does not have handling for if interhited extension API breaks (i.e. they are renamed or something)
+# no idea how that could be done, so not doing
+}
+"inherit-extensions": {
+    "description": "Inherit these extra extension points from the base application or sdk when finishing the build.",
+    "type": "array",
+    "items": {
+    "description": "Inherit this extra extension point from the base application or sdk when finishing the build.",
+    "type": "string"
+    }
+},
+"inherit-sdk-extensions": {
+    "description": "Inherit these extra extension points from the base application or sdk when finishing the build, but do not inherit them into the platform.",
+    "type": "array",
+    "items": {
+    "description": "Inherit this extra extension point from the base application or sdk when finishing the build, but do not inherit into the platform.",
+    "type": "string"
+    }
+},
+
+# these should be handled now:
+"add-extensions": {
+    "description": "This is a dictionary of extension objects. The key is the name of the extension.",
+    "type": "object",
+    "patternProperties": {
+    ".*": {
+        "$ref": "#/$defs/extension"
+    },
+    "additionalProperties": false
+    }
+},
+"add-build-extensions": {
+    "description": "This is a dictionary of extension objects similar to add-extensions. The main difference is that the extensions are added early and are available for use during the build.",
+    "type": "object",
+    "patternProperties": {
+    ".*": {
+        "$ref": "#/$defs/extension"
+    },
+    "additionalProperties": false
+    }
+
+},

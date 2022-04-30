@@ -30,6 +30,7 @@ RUN apt-get update && \
       squashfs-tools \
       ssh-client \
       jq \
+      flatpak \
     && \
   apt-get clean && \
   rmdir /var/cache/apt/archives/partial

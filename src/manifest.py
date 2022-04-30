@@ -50,6 +50,7 @@ from .lib.errors import (
 from .lib.checkers import Checker
 from .checkers import ALL_CHECKERS
 from src.specialcheckers.submodulechecker import SubmoduleChecker
+from src.specialcheckers.runtimechecker import RuntimeChecker
 
 MAIN_SRC_PROP = "is-main-source"
 MAX_MANIFEST_SIZE = 1024 * 100
@@ -341,6 +342,7 @@ class ManifestChecker:
             external_data = [d for d in external_data if d.type == filter_type]
 
         self.submodule_checker = SubmoduleChecker()
+        self.runtime_checker = RuntimeChecker()
         counter = self.TasksCounter(total=len(external_data))
         async with aiohttp.ClientSession(
             raise_for_status=True,
@@ -361,6 +363,16 @@ class ManifestChecker:
                     self._relative_module_paths, self._root_manifest_path
                 )
             )
+
+            # todo check if base here?
+
+            if self.kind == self.Kind.APP:
+                special_check_tasks.append(
+                    self.runtime_checker.check(
+                        self._root_manifest, self._root_manifest_path
+                    )
+                )
+                log.info("Checking runtime and/or base version")
 
             log.info("Checking %s external data items", counter.total)
             log.info("Checking %s referenced modules", len(self._relative_module_paths))
@@ -497,6 +509,7 @@ class ManifestChecker:
         # insertion-order-preserving dictionary so we use that.
         changes: t.Dict[str, t.Any]
         changes = OrderedDict()
+
         for path, datas in self._external_data.items():
             self._update_manifest(path, datas, changes)
         if changes:
