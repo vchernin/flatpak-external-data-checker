@@ -25,3 +25,4 @@ python3-packaging
 squashfs-tools
 ssh-client
 jq
+flatpak
