@@ -448,7 +448,7 @@ class ManifestChecker:
         submodule_errors = self.special_checker.get_errors()
         return [
             e for e in self._errors if only_type is None or isinstance(e, only_type)
-        ]
+        ] + submodule_errors
 
     def get_outdated_external_data(self) -> t.List[ExternalBase]:
         """Returns a list of the outdated external data

@@ -139,17 +139,19 @@ class CommittedChanges(t.NamedTuple):
     base_branch: t.Optional[str]
 
 
-def commit_changes(changes: t.List[str]) -> CommittedChanges:
+def commit_changes(
+    changes: t.List[str], nested_submodule_warnings: t.List[str]
+) -> CommittedChanges:
     log.info("Committing updates")
     body: t.Optional[str]
     if len(changes) > 1:
         subject = "Update {} modules".format(len(changes))
-        body = "\n".join(changes)
+        body = "\n".join(changes) + "\n\n" + "\n".join(nested_submodule_warnings)
         message = subject + "\n\n" + body
     else:
         subject = changes[0]
-        body = None
-        message = subject
+        body = "\n".join(nested_submodule_warnings)
+        message = subject + "\n\n" + body
 
     # Remember the base branch
     base_branch: t.Optional[str]
@@ -161,6 +163,8 @@ def commit_changes(changes: t.List[str]) -> CommittedChanges:
 
     # Moved to detached HEAD
     check_call(["git", "checkout", "HEAD@{0}"])
+
+    # git uses one submodule commit per superproject, so submodule changes are visible in every branch
     check_call(["git", "commit", "-am", message])
 
     # Find a stable identifier for the contents of the tree, to avoid
