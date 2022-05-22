@@ -59,7 +59,7 @@ def indir(path):
         os.chdir(old)
 
 
-def print_outdated_external_data(manifest_checker: manifest.ManifestChecker):
+def print_outdated_data(manifest_checker: manifest.ManifestChecker):
     ext_data = manifest_checker.get_outdated_external_data()
     for data in ext_data:
         state_txt = data.state.name or str(data.state)
@@ -113,7 +113,11 @@ def print_outdated_external_data(manifest_checker: manifest.ManifestChecker):
             **message_args,
         )
         print(message, flush=True)
-    return len(ext_data)
+
+    special_data = manifest_checker.special_checker.get_outdated()
+    manifest_checker.special_checker.print_outdated()
+
+    return len(ext_data) + len(special_data)
 
 
 def print_errors(manifest_checker: manifest.ManifestChecker) -> int:
@@ -390,6 +394,52 @@ def parse_cli_args(cli_args=None):
     return parser.parse_args(cli_args)
 
 
+def do_special_update():
+    """To not overwhelm flathub builders (buildbot), we need to limit PRs solely for special updates by checking the current activity of buildbot"""
+
+    # this should be true if in github actions under flathub, either in flathub wide f-e-d-c or in custom workflows
+    try:
+        on_flathub = os.environ["CI_REPOSITORY_OWNER"] == "flathub"
+    except KeyError:
+        on_flathub = False
+
+    do_flathub_update = False
+    if on_flathub:
+
+        response = requests.get(
+            "https://flathub.org/builds/api/v2/builds?complete=False"
+        )
+        ongoing_builds = response.json().get("meta").get("total")
+
+        response = requests.get(
+            "https://flathub.org/builds/api/v2/buildrequests?claimed=False"
+        )
+        build_requests = response.json().get("meta").get("total")
+
+        if build_requests > 0:
+            do_flathub_update = False
+        elif ongoing_builds > 10:
+            do_flathub_update = False
+        else:
+            do_flathub_update = True
+
+    # limit runtime updates using our total app count and a custom defined value
+    # assumes f-e-d-c is being run hourly (which is true in the flathub wide checker and in most custom checkers)
+
+    # MAX_DAILY_RUNTIME_UPDATES = 15
+    # this is a rough estimate, but accuracy isn't critical
+    # REPOS_COUNT = 2000
+
+    #  do_flathub_update = random.randrange(
+    #     1, int((REPOS_COUNT * 24) / MAX_DAILY_RUNTIME_UPDATES)
+    #  )
+    if not on_flathub or do_flathub_update:
+        return True
+    else:
+        log.info("Not doing Flathub runtime updates due to staged Flathub rollouts")
+        return False
+
+
 async def run_with_args(args: argparse.Namespace) -> t.Tuple[int, int, bool]:
     init_logging(logging.DEBUG if args.verbose else logging.INFO)
 
@@ -400,13 +450,24 @@ async def run_with_args(args: argparse.Namespace) -> t.Tuple[int, int, bool]:
 
     await manifest_checker.check(args.filter_type)
 
-    outdated_num = print_outdated_external_data(manifest_checker)
+    # todo only ret ext data
+    outdated_data = print_outdated_data(manifest_checker)
 
-    if should_update and outdated_num > 0:
-        changes = manifest_checker.update_manifests()
-        if changes and not args.edit_only:
+    if should_update and (outdated_data > 0 or do_special_update()):
+
+        # todo if there is a special checker update, and we know we are doing a runtime update
+        # (save important (only runtime for now) updates specificaly as a property in manifest_checker, submodules not considered important),
+        # override the lack of other important updates and always update the manifest.
+        manifest_changes = manifest_checker.update_manifests()
+
+        special_changes = await manifest_checker.special_checker.update()
+        if (manifest_changes or special_changes) and not args.edit_only:
             with indir(os.path.dirname(args.manifest)):
-                committed_changes = commit_changes(changes)
+
+                nested_submodule_warnings = [""]
+                committed_changes = commit_changes(
+                    manifest_changes + special_changes, nested_submodule_warnings
+                )
                 if not args.commit_only:
                     open_pr(
                         committed_changes,
@@ -423,7 +484,11 @@ async def run_with_args(args: argparse.Namespace) -> t.Tuple[int, int, bool]:
         errors_num,
     )
 
-    return outdated_num, errors_num, did_update
+    return (
+        outdated_data,
+        errors_num,
+        did_update,
+    )
 
 
 class ResultCode(IntFlag):

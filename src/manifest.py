@@ -50,7 +50,7 @@ from .lib.errors import (
 )
 from .lib.checkers import Checker
 from .checkers import ALL_CHECKERS
-
+from .lib.specialcheckers import SpecialChecker
 
 MAIN_SRC_PROP = "is-main-source"
 MAX_MANIFEST_SIZE = 1024 * 100
@@ -116,6 +116,8 @@ class ManifestChecker:
 
         self._errors: t.List[Exception]
         self._errors = []
+
+        self._relative_module_paths: t.List[str] = []
 
         # Initialize checkers
         self._checkers: t.List[t.Type[Checker]]
@@ -210,10 +212,15 @@ class ManifestChecker:
     ):
         if isinstance(module, str):
             ext_module_path = os.path.join(os.path.dirname(module_path), module)
+            relative_module_path = os.path.relpath(
+                ext_module_path, self._root_manifest_dir
+            )
+
             log.info(
                 "Loading module from %s",
-                os.path.relpath(ext_module_path, self._root_manifest_dir),
+                relative_module_path,
             )
+            self._relative_module_paths.append(relative_module_path)
 
             try:
                 ext_module = self._read_manifest(ext_module_path)
@@ -387,22 +394,38 @@ class ManifestChecker:
         if filter_type is not None:
             external_data = [d for d in external_data if d.type == filter_type]
 
+        self.special_checker = SpecialChecker()
         counter = self.TasksCounter(total=len(external_data))
         async with aiohttp.ClientSession(
             raise_for_status=True,
             headers=HTTP_CLIENT_HEADERS,
             timeout=aiohttp.ClientTimeout(connect=TIMEOUT_CONNECT, total=TIMEOUT_TOTAL),
         ) as http_session:
-            check_tasks = []
+            ext_data_check_tasks = []
+            special_check_tasks = []
             for data in external_data:
                 if data.state != data.State.UNKNOWN:
                     continue
-                check_tasks.append(self._check_data(counter, http_session, data))
+                ext_data_check_tasks.append(
+                    self._check_data(counter, http_session, data)
+                )
+            special_check_tasks.append(
+                self.special_checker.check(
+                    self._root_manifest_path,
+                    self._relative_module_paths,
+                    self._root_manifest,
+                    self.kind == self.Kind.APP,
+                )
+            )
 
             log.info("Checking %s external data items", counter.total)
-            ext_data_checked = await asyncio.gather(*check_tasks)
+            log.info("Checking %s referenced modules", len(self._relative_module_paths))
 
-        return ext_data_checked
+            ext_data_items = await asyncio.gather(*ext_data_check_tasks)
+
+            await asyncio.gather(*special_check_tasks)
+
+        return ext_data_items
 
     def get_external_data(self, only_type=None) -> t.List[ExternalBase]:
         """Returns the list of the external data found in the manifest
@@ -422,7 +445,7 @@ class ManifestChecker:
         only_type: t.Optional[t.Type[Exception]] = None,
     ) -> t.List[Exception]:
         """Return a list of errors occured while checking/updating the manifest"""
-
+        submodule_errors = self.special_checker.get_errors()
         return [
             e for e in self._errors if only_type is None or isinstance(e, only_type)
         ]
@@ -542,3 +565,6 @@ class ManifestChecker:
                 log.error(err)
 
         return list(changes)
+
+    def return_modules_list(self) -> t.List[str]:
+        return self._relative_module_paths
