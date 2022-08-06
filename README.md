@@ -84,36 +84,32 @@ Alternatively, you can use own workflow. This can be useful if e.g. wanting to u
 Put this yaml file under `.github/workflows`, e.g. put it in `.github/workflows/update.yaml`. Ensure to put the correct path to the manifest in the last line.
 
 ```yaml
+
 name: Check for updates
 on:
-  schedule: # for scheduling to work this file must be in the default branch
-  - cron: "0 * * * *" # run every hour
-  workflow_dispatch: # can be manually dispatched under GitHub's "Actions" tab 
-
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
 jobs:
   flatpak-external-data-checker:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
-        branch: [ master ] # list all branches to check
-    
+        branch: [ master, beta ]
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ matrix.branch }}
-
       - uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
         env:
           GIT_AUTHOR_NAME: Flatpak External Data Checker
           GIT_COMMITTER_NAME: Flatpak External Data Checker
-          # email sets "github-actions[bot]" as commit author, see https://github.community/t/github-actions-bot-email-address/17204/6
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --update --never-fork $PATH_TO_MANIFEST # e.g. com.organization.myapp.json
+          args: --update --never-fork com.brave.Browser.yaml
 ```
 
 ### Automatically submitting PRs
